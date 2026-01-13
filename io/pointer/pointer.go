@@ -41,6 +41,37 @@ type Event struct {
 	Modifiers key.Modifiers
 }
 
+type Placement byte
+
+const (
+	// ProcessThenStop causes StopOp to process events through its region,
+	// then stop further propagation to subsequent handlers.
+	ProcessThenStop Placement = iota
+
+	// StopBeforeEntry prevents events from entering StopOp's region,
+	// stopping propagation before any handlers in the region can receive events.
+	StopBeforeEntry
+)
+
+// StopOp defines a region between its Push and corresponding StopStack.Pop
+// where event propagation behavior is controlled.
+//
+// The Placement field determines how propagation is affected:
+//   - ProcessThenStop: Events are processed by handlers in the region,
+//     then propagation stops (similar to "after" semantics).
+//   - StopBeforeEntry: Events are blocked from entering the region entirely,
+//     preventing any handlers within from receiving them (similar to "before" semantics).
+type StopOp struct {
+	Placement
+}
+
+// StopStack represents a StopOp on the stop stack.
+type StopStack struct {
+	ops     *ops.Ops
+	id      ops.StackID
+	macroID uint32
+}
+
 // Filter matches every [Event] that target the Tag and whose kind is
 // included in Kinds. Note that only tags specified in [event.Op] can
 // be targeted by pointer events.
@@ -221,6 +252,25 @@ func (s ScrollRange) Union(s2 ScrollRange) ScrollRange {
 		Min: min(s.Min, s2.Min),
 		Max: max(s.Max, s2.Max),
 	}
+}
+
+// Push the current stop mode to the stop stack
+func (p StopOp) Push(o *op.Ops) StopStack {
+	id, mid := ops.PushOp(&o.Internal, ops.StopStack)
+	data := ops.Write(&o.Internal, ops.TypeStopLen)
+	switch p.Placement {
+	case ProcessThenStop:
+		data[0] = byte(ops.TypeProcessThenStop)
+	case StopBeforeEntry:
+		data[0] = byte(ops.TypeStopBeforeEntry)
+	}
+	return StopStack{ops: &o.Internal, id: id, macroID: mid}
+}
+
+func (p StopStack) Pop() {
+	ops.PopOp(p.ops, ops.StopStack, p.id, p.macroID)
+	data := ops.Write(p.ops, ops.TypePopStopLen)
+	data[0] = byte(ops.TypePopStop)
 }
 
 func (op Cursor) Add(o *op.Ops) {

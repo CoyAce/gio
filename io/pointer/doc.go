@@ -79,9 +79,14 @@ In the example above, the processing order is: h4, h3, h2, h1, &h1
 
 Events pass through sibling and ancestor areas by default.
 
-To stop event propagation, use [event.StopOp] to declare a terminating handler.
-When a terminating handler matches an event, it stops propagation to handlers
-that follow it in the processing order.
+To stop event propagation, use event.StopOp to declare a terminating handler.
+When a terminating handler matches an event, it stops propagation to subsequent
+handlers in the processing order.
+
+To intercept events from third-party widgets that use event.Op (where you cannot
+modify them to use event.StopOp), wrap them with StopOp.Push and
+the corresponding StopStack.Pop. This allows interception without needing to calculate
+the widget's precise clip area.
 
 # Disambiguation
 
