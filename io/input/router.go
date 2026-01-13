@@ -829,6 +829,12 @@ func (q *Router) collect() {
 			}
 			terminate = false
 		// Pointer ops.
+		case ops.TypeProcessThenStop:
+			pc.pushStopAfter()
+		case ops.TypeStopBeforeEntry:
+			pc.pushStopBefore()
+		case ops.TypePopStop:
+			pc.popGrab()
 		case ops.TypeCursor:
 			name := pointer.Cursor(encOp.Data[1])
 			pc.cursor(name)

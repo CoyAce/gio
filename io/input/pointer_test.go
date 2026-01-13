@@ -831,6 +831,235 @@ func TestPassOp(t *testing.T) {
 	assertEventPointerTypeSequence(t, events(&r, -1, filter(h4)), pointer.Press)
 }
 
+func TestStopOp(t *testing.T) {
+	var ops op.Ops
+	h1, h2, h3 := "root", "child1", "child2"
+	area := clip.Rect(image.Rect(0, 0, 100, 100))
+	root := area.Push(&ops)
+	event.Op(&ops, h1)
+	corner := clip.Rect(image.Rect(0, 0, 50, 50))
+	processThenStop := pointer.StopOp{}.Push(&ops)
+	newHandler(corner, &ops, h2)
+	processThenStop.Pop()
+	newHandler(corner, &ops, h3)
+	root.Pop()
+
+	var r Router
+	filter := func(t event.Tag) event.Filter {
+		return pointer.Filter{Target: t, Kinds: pointer.Press | pointer.Cancel}
+	}
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Cancel)
+	r.Frame(&ops)
+	r.Queue(
+		// inside corner, targets at h1,h2,h3. h1 is intercepted by StopOp, h2 isn't.
+		// since StopOp stop after h2
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(25, 25),
+		},
+	)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)))
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Press)
+}
+
+func TestStopOpOnMultipleHandler(t *testing.T) {
+	var ops op.Ops
+
+	h1, h2, h3 := "root", "child1", "child2"
+	area := clip.Rect(image.Rect(0, 0, 100, 100))
+	root := area.Push(&ops)
+	event.Op(&ops, h1)
+	corner := clip.Rect(image.Rect(0, 0, 50, 50))
+	processThenStop := pointer.StopOp{}.Push(&ops)
+	newHandler(corner, &ops, h2)
+	newHandler(corner, &ops, h3)
+	processThenStop.Pop()
+	root.Pop()
+
+	var r Router
+	filter := func(t event.Tag) event.Filter {
+		return pointer.Filter{Target: t, Kinds: pointer.Press | pointer.Cancel}
+	}
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Cancel)
+	r.Frame(&ops)
+	r.Queue(
+		// inside corner, targets at h1,h2,h3. h1 is intercepted by StopOp.
+		// since StopOp stop after region [h3, h2]
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(25, 25),
+		},
+		pointer.Event{
+			Kind: pointer.Release,
+		},
+		// outside corner, targets at h1, not intercepted by StopOp
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(75, 75),
+		},
+	)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Press)
+}
+
+func TestStopBeforeEntryOp(t *testing.T) {
+	var ops op.Ops
+	h1, h2, h3 := "root", "child1", "child2"
+	area := clip.Rect(image.Rect(0, 0, 100, 100))
+	root := area.Push(&ops)
+	event.Op(&ops, h1)
+	corner := clip.Rect(image.Rect(0, 0, 50, 50))
+	stopBeforeEntry := pointer.StopOp{Placement: pointer.StopBeforeEntry}.Push(&ops)
+	newHandler(corner, &ops, h2)
+	stopBeforeEntry.Pop()
+	newHandler(corner, &ops, h3)
+	root.Pop()
+
+	var r Router
+	filter := func(t event.Tag) event.Filter {
+		return pointer.Filter{Target: t, Kinds: pointer.Press | pointer.Cancel}
+	}
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Cancel)
+	r.Frame(&ops)
+	r.Queue(
+		// inside corner, targets at h1,h2,h3. h1 and h2 are intercepted by StopOp
+		// since StopOp stop before h2
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(25, 25),
+		},
+		pointer.Event{
+			Kind: pointer.Release,
+		},
+		// outside corner, targets h1, not intercepted by StopOp
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(75, 75),
+		},
+	)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)))
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Press)
+}
+
+func TestStopAfterAndBeforeOp(t *testing.T) {
+	var ops op.Ops
+	h1, h2, h3, h4 := "root", "child1", "child2", "child3"
+	area := clip.Rect(image.Rect(0, 0, 100, 100))
+	root := area.Push(&ops)
+	event.Op(&ops, h1)
+	corner := clip.Rect(image.Rect(0, 0, 50, 50))
+	stopBeforeEntry := pointer.StopOp{Placement: pointer.StopBeforeEntry}.Push(&ops)
+	newHandler(corner, &ops, h2)
+	stopBeforeEntry.Pop()
+	smallerCorner := clip.Rect(image.Rect(0, 0, 25, 25))
+	processThenStop := pointer.StopOp{Placement: pointer.ProcessThenStop}.Push(&ops)
+	newHandler(smallerCorner, &ops, h3)
+	processThenStop.Pop()
+	root.Pop()
+
+	var r Router
+	filter := func(t event.Tag) event.Filter {
+		return pointer.Filter{Target: t, Kinds: pointer.Press | pointer.Cancel}
+	}
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h4)), pointer.Cancel)
+	r.Frame(&ops)
+	r.Queue(
+		// inside smaller corner, targets at h1,h2,h3, h1,h2 are intercepted.
+		// since StopOp stop after h3
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(20, 20),
+		},
+		pointer.Event{
+			Kind: pointer.Release,
+		},
+		// inside corner, targets at h1,h2, h1,h2 are intercepted.
+		// since StopOp stop before h2
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(35, 35),
+		},
+		pointer.Event{
+			Kind: pointer.Release,
+		},
+		// outside corner, targets at h1, not intercepted.
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(75, 75),
+		},
+	)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)))
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Press)
+}
+
+func TestStopBeforeAndAfterOp(t *testing.T) {
+	var ops op.Ops
+	h1, h2, h3, h4 := "root", "child1", "child2", "child3"
+	area := clip.Rect(image.Rect(0, 0, 100, 100))
+	root := area.Push(&ops)
+	event.Op(&ops, h1)
+	corner := clip.Rect(image.Rect(0, 0, 50, 50))
+	processThenStop := pointer.StopOp{Placement: pointer.ProcessThenStop}.Push(&ops)
+	newHandler(corner, &ops, h2)
+	processThenStop.Pop()
+	stopBeforeEntry := pointer.StopOp{Placement: pointer.StopBeforeEntry}.Push(&ops)
+	smallerCorner := clip.Rect(image.Rect(0, 0, 25, 25))
+	newHandler(smallerCorner, &ops, h3)
+	stopBeforeEntry.Pop()
+	root.Pop()
+
+	var r Router
+	filter := func(t event.Tag) event.Filter {
+		return pointer.Filter{Target: t, Kinds: pointer.Press | pointer.Cancel}
+	}
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h4)), pointer.Cancel)
+	r.Frame(&ops)
+	r.Queue(
+		// inside smaller corner, targets at h1,h2,h3, h1,h2,h3 are intercepted.
+		// since StopOp stop before h3
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(20, 20),
+		},
+		pointer.Event{
+			Kind: pointer.Release,
+		},
+		// inside corner, targets at h1,h2, h1 is intercepted.
+		// since StopOp stop after h2
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(35, 35),
+		},
+		pointer.Event{
+			Kind: pointer.Release,
+		},
+		// outside corner, targets at h1, not intercepted.
+		pointer.Event{
+			Kind:     pointer.Press,
+			Position: f32.Pt(75, 75),
+		},
+	)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)))
+}
+
 func TestStopOpLocalization(t *testing.T) {
 	var ops op.Ops
 
@@ -1196,6 +1425,12 @@ func (offer) Read([]byte) (int, error) { return 0, nil }
 func (o *offer) Close() error {
 	o.closed = true
 	return nil
+}
+
+func newHandler(corner clip.Rect, ops *op.Ops, tag event.Tag) {
+	stack := corner.Push(ops)
+	event.Op(ops, tag)
+	stack.Pop()
 }
 
 // addPointerHandler adds a pointer.InputOp for the tag in a
