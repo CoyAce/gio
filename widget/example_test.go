@@ -37,7 +37,6 @@ func ExampleClickable_passthrough() {
 		button1.Layout(gtx, content)
 		// button2 completely covers button1, but pass-through allows pointer
 		// events to pass through to button1.
-		defer pointer.PassOp{}.Push(gtx.Ops).Pop()
 		button2.Layout(gtx, content)
 	}
 

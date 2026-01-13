@@ -59,8 +59,6 @@ const (
 	TypePaint
 	TypeColor
 	TypeLinearGradient
-	TypePass
-	TypePopPass
 	TypeInput
 	TypeKeyInputHint
 	TypeSave
@@ -77,6 +75,7 @@ const (
 	TypeSemanticSelected
 	TypeSemanticEnabled
 	TypeActionInput
+	TypeStop
 )
 
 type StackID struct {
@@ -111,7 +110,6 @@ type ClipOp struct {
 const (
 	ClipStack StackKind = iota
 	TransStack
-	PassStack
 	OpacityStack
 	_StackKind
 )
@@ -135,8 +133,6 @@ const (
 	TypePaintLen            = 1
 	TypeColorLen            = 1 + 4
 	TypeLinearGradientLen   = 1 + 8*2 + 4*2
-	TypePassLen             = 1
-	TypePopPassLen          = 1
 	TypeInputLen            = 1
 	TypeKeyInputHintLen     = 1 + 1
 	TypeSaveLen             = 1 + 4
@@ -408,8 +404,6 @@ var opProps = [0x100]opProp{
 	TypePaint:            {Size: TypePaintLen, NumRefs: 0},
 	TypeColor:            {Size: TypeColorLen, NumRefs: 0},
 	TypeLinearGradient:   {Size: TypeLinearGradientLen, NumRefs: 0},
-	TypePass:             {Size: TypePassLen, NumRefs: 0},
-	TypePopPass:          {Size: TypePopPassLen, NumRefs: 0},
 	TypeInput:            {Size: TypeInputLen, NumRefs: 1},
 	TypeKeyInputHint:     {Size: TypeKeyInputHintLen, NumRefs: 1},
 	TypeSave:             {Size: TypeSaveLen, NumRefs: 0},
@@ -426,6 +420,7 @@ var opProps = [0x100]opProp{
 	TypeSemanticSelected: {Size: TypeSemanticSelectedLen, NumRefs: 0},
 	TypeSemanticEnabled:  {Size: TypeSemanticEnabledLen, NumRefs: 0},
 	TypeActionInput:      {Size: TypeActionInputLen, NumRefs: 0},
+	TypeStop:             {Size: TypeInputLen, NumRefs: 1},
 }
 
 func (t OpType) props() (size, numRefs uint32) {
@@ -465,10 +460,6 @@ func (t OpType) String() string {
 		return "Color"
 	case TypeLinearGradient:
 		return "LinearGradient"
-	case TypePass:
-		return "Pass"
-	case TypePopPass:
-		return "PopPass"
 	case TypeInput:
 		return "Input"
 	case TypeKeyInputHint:
