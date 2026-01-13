@@ -41,17 +41,6 @@ type Event struct {
 	Modifiers key.Modifiers
 }
 
-// PassOp sets the pass-through mode. InputOps added while the pass-through
-// mode is set don't block events to siblings.
-type PassOp struct{}
-
-// PassStack represents a PassOp on the pass stack.
-type PassStack struct {
-	ops     *ops.Ops
-	id      ops.StackID
-	macroID uint32
-}
-
 // Filter matches every [Event] that target the Tag and whose kind is
 // included in Kinds. Note that only tags specified in [event.Op] can
 // be targeted by pointer events.
@@ -232,20 +221,6 @@ func (s ScrollRange) Union(s2 ScrollRange) ScrollRange {
 		Min: min(s.Min, s2.Min),
 		Max: max(s.Max, s2.Max),
 	}
-}
-
-// Push the current pass mode to the pass stack and set the pass mode.
-func (p PassOp) Push(o *op.Ops) PassStack {
-	id, mid := ops.PushOp(&o.Internal, ops.PassStack)
-	data := ops.Write(&o.Internal, ops.TypePassLen)
-	data[0] = byte(ops.TypePass)
-	return PassStack{ops: &o.Internal, id: id, macroID: mid}
-}
-
-func (p PassStack) Pop() {
-	ops.PopOp(p.ops, ops.PassStack, p.id, p.macroID)
-	data := ops.Write(p.ops, ops.TypePopPassLen)
-	data[0] = byte(ops.TypePopPass)
 }
 
 func (op Cursor) Add(o *op.Ops) {

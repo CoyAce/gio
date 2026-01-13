@@ -31,3 +31,12 @@ func Op(o *op.Ops, tag Tag) {
 	data := ops.Write1(&o.Internal, ops.TypeInputLen, tag)
 	data[0] = byte(ops.TypeInput)
 }
+
+// StopOp functions identically to Op except that it stops event propagation
+func StopOp(o *op.Ops, tag Tag) {
+	if tag == nil {
+		panic("Tag must be non-nil")
+	}
+	data := ops.Write1(&o.Internal, ops.TypeInputLen, tag)
+	data[0] = byte(ops.TypeStop)
+}

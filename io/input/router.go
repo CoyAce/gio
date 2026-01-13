@@ -814,22 +814,25 @@ func (q *Router) collect() {
 			t = q.transStack[n-1]
 			q.transStack = q.transStack[:n-1]
 			pc.setTrans(t)
-
-		case ops.TypeInput:
+		case ops.TypeStop:
 			tag := encOp.Refs[0].(event.Tag)
 			s := q.stateFor(tag)
-			pc.inputOp(tag, &s.pointer)
+			pc.inputOp(tag, &s.pointer, true)
 			a := pc.currentArea()
 			b := pc.currentAreaBounds()
 			if s.filter.focusable {
 				kq.inputOp(tag, &s.key, t, a, b)
 			}
-
+		case ops.TypeInput:
+			tag := encOp.Refs[0].(event.Tag)
+			s := q.stateFor(tag)
+			pc.inputOp(tag, &s.pointer, false)
+			a := pc.currentArea()
+			b := pc.currentAreaBounds()
+			if s.filter.focusable {
+				kq.inputOp(tag, &s.key, t, a, b)
+			}
 		// Pointer ops.
-		case ops.TypePass:
-			pc.pass()
-		case ops.TypePopPass:
-			pc.popPass()
 		case ops.TypeCursor:
 			name := pointer.Cursor(encOp.Data[1])
 			pc.cursor(name)

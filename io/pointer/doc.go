@@ -29,46 +29,59 @@ with their bounding boxes.
 # Matching events
 
 Areas form an implicit tree, with input handlers as leaves. The children of
-an area is every area and handler added between its Push and corresponding Pop.
+an area consist of every area and handler added between its Push and corresponding Pop.
 
 For example:
 
 	ops := new(op.Ops)
-	var h1, h2 *Handler
+	h1, h2, h3, h4 := "h1", "h2", "h3", "h4"
 
-	area := clip.Rect(...).Push(ops)
-	event.Op(Ops, h1)
-	area.Pop()
+	area := clip.Rect(image.Rect(0, 0, 100, 100))
+	root := area.Push(ops)
 
-	area := clip.Rect(...).Push(ops)
-	event.Op(Ops, h2)
-	area.Pop()
+	event.Op(ops, &h1)
+	event.Op(ops, h1)
 
-implies a tree of two inner nodes, each with one pointer handler attached.
+	child1 := area.Push(ops)
+	event.Op(ops, h2)
+	child1.Pop()
 
-The matching proceeds as follows.
+	child2 := area.Push(ops)
+	event.Op(ops, h3)
+	event.Op(ops, h4)
+	child2.Pop()
 
-First, the foremost area that contains the event is found. Only areas whose
-parent areas all contain the event is considered.
+	root.Pop()
 
-Then, every handler attached to the area is matched with the event.
+This implies a tree with five handler nodes as illustrated below:
 
-If all attached handlers are marked pass-through or if no handlers are
-attached, the matching repeats with the next foremost (sibling) area. Otherwise
-the matching repeats with the parent area.
+		root
+		|
+		&h1
+		|
+		h1
+		|------------+
+		|            |
+	    child1       child2
+		|            |
+		h2           h3
+		             |
+		             h4
 
-In the example above, all events will go to h2 because it and h1 are siblings
-and none are pass-through.
+Event matching proceeds as follows:
 
-# Pass-through
+Every handler attached to an area is matched with the event during a
+depth-first traversal of the tree, following a rightmost-first expansion policy.
 
-The PassOp operations controls the pass-through setting. All handlers added
-inside one or more PassOp scopes are marked pass-through.
+In the example above, the processing order is: h4, h3, h2, h1, &h1
 
-Pass-through is useful for overlay widgets. Consider a hidden side drawer: when
-the user touches the side, both the (transparent) drawer handle and the
-interface below should receive pointer events. This effect is achieved by
-marking the drawer handle pass-through.
+# Event Passing
+
+Events pass through sibling and ancestor areas by default.
+
+To stop event propagation, use [event.StopOp] to declare a terminating handler.
+When a terminating handler matches an event, it stops propagation to handlers
+that follow it in the processing order.
 
 # Disambiguation
 
