@@ -38,6 +38,24 @@ type hitNode struct {
 	// For handler nodes.
 	tag       event.Tag
 	terminate bool
+	stopMode
+}
+
+func (h *hitNode) IsHandler() bool {
+	return h.tag != nil
+}
+
+func (h *hitNode) isInterceptedByGrabAfterOp(prev *hitNode) bool {
+	isNonGrabAfterHandler := h.IsHandler() && h.stopMode != After
+	followingGrabAfterHandler := prev != nil && prev.stopMode == After
+	return isNonGrabAfterHandler && followingGrabAfterHandler
+}
+
+func (h *hitNode) isInterceptedByGrabBeforeOp(prev *hitNode) bool {
+	isGrabBeforeHandler := h.IsHandler() && h.stopMode == Before
+	followingNonGrabBeforeHandler := prev != nil && prev.stopMode != Before
+	isTopmostHandler := prev == nil
+	return isGrabBeforeHandler && (followingNonGrabBeforeHandler || isTopmostHandler)
 }
 
 // pointerState is the input state related to pointer events.
@@ -106,12 +124,21 @@ type areaNode struct {
 
 type areaKind uint8
 
+type stopMode uint8
+
+const (
+	None stopMode = iota
+	After
+	Before
+)
+
 // collectState represents the state for pointerCollector.
 type collectState struct {
 	t f32.Affine2D
 	// nodePlusOne is the current node index, plus one to
 	// make the zero value collectState the initial state.
 	nodePlusOne int
+	stopMode
 }
 
 // pointerCollector tracks the state needed to update an pointerQueue
@@ -201,6 +228,19 @@ func (c *pointerCollector) popArea() {
 	c.nodeStack = c.nodeStack[:n-1]
 }
 
+
+func (c *pointerCollector) pushStopAfter() {
+	c.state.stopMode = After
+}
+
+func (c *pointerCollector) pushStopBefore() {
+	c.state.stopMode = Before
+}
+
+func (c *pointerCollector) popGrab() {
+	c.state.stopMode = None
+}
+
 func (c *pointerCollector) currentArea() int {
 	if i := c.state.nodePlusOne - 1; i != -1 {
 		n := c.q.hitTree[i]
@@ -229,6 +269,7 @@ func (c *pointerCollector) newHandler(tag event.Tag, state *pointerHandler, term
 	c.addHitNode(hitNode{
 		area:      areaID,
 		tag:       tag,
+		stopMode:  c.state.stopMode,
 		terminate: terminate,
 	})
 	state.areaPlusOne = areaID + 1
@@ -539,14 +580,24 @@ func (q *pointerQueue) SemanticAt(pos f32.Point) (semID SemanticID, hasSemID boo
 // logic even though they are interested in different aspects of hit nodes.
 func (q *pointerQueue) hitTest(pos f32.Point, onNode func(*hitNode) bool) pointer.Cursor {
 	cursor := pointer.CursorDefault
+	var prev *hitNode
 	for idx := len(q.hitTree) - 1; idx >= 0; idx-- {
 		n := &q.hitTree[idx]
+		if n.isInterceptedByGrabAfterOp(prev) {
+			break
+		}
 		hit, c := q.hit(n.area, pos)
 		if !hit {
 			continue
 		}
+		if n.isInterceptedByGrabBeforeOp(prev) {
+			break
+		}
 		if cursor == pointer.CursorDefault {
 			cursor = c
+		}
+		if n.IsHandler() {
+			prev = n
 		}
 		if n.terminate {
 			// pass to layered component
