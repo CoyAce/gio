@@ -833,6 +833,12 @@ func (q *Router) collect() {
 				kq.inputOp(tag, &s.key, t, a, b)
 			}
 		// Pointer ops.
+		case ops.TypeProcessThenStop:
+			pc.pushStopAfter()
+		case ops.TypeStopBeforeEntry:
+			pc.pushStopBefore()
+		case ops.TypePopStop:
+			pc.popGrab()
 		case ops.TypeCursor:
 			name := pointer.Cursor(encOp.Data[1])
 			pc.cursor(name)
