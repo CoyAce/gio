@@ -7,7 +7,6 @@ import (
 	"image/color"
 	"math"
 
-	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -178,7 +177,6 @@ func (s ScrollbarStyle) layout(gtx layout.Context, axis layout.Axis, viewportSta
 
 			// Stack a normal clickable area on top of the draggable area
 			// to capture non-dragging clicks.
-			defer pointer.PassOp{}.Push(gtx.Ops).Pop()
 			defer pointerArea.Push(gtx.Ops).Pop()
 			s.Scrollbar.AddTrack(gtx.Ops)
 
@@ -221,7 +219,6 @@ func (s ScrollbarStyle) layout(gtx layout.Context, axis layout.Axis, viewportSta
 
 				// Add the indicator pointer hit area.
 				area := clip.Rect(image.Rectangle{Max: indicatorDims})
-				defer pointer.PassOp{}.Push(gtx.Ops).Pop()
 				defer area.Push(gtx.Ops).Pop()
 				s.Scrollbar.AddIndicator(gtx.Ops)
 
