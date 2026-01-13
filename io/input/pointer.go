@@ -36,8 +36,8 @@ type hitNode struct {
 	area int
 
 	// For handler nodes.
-	tag  event.Tag
-	pass bool
+	tag       event.Tag
+	terminate bool
 }
 
 // pointerState is the input state related to pointer events.
@@ -112,7 +112,6 @@ type collectState struct {
 	// nodePlusOne is the current node index, plus one to
 	// make the zero value collectState the initial state.
 	nodePlusOne int
-	pass        int
 }
 
 // pointerCollector tracks the state needed to update an pointerQueue
@@ -193,7 +192,6 @@ func (c *pointerCollector) pushArea(kind areaKind, bounds image.Rectangle) {
 	c.nodeStack = append(c.nodeStack, c.state.nodePlusOne-1)
 	c.addHitNode(hitNode{
 		area: areaID,
-		pass: true,
 	})
 }
 
@@ -201,14 +199,6 @@ func (c *pointerCollector) popArea() {
 	n := len(c.nodeStack)
 	c.state.nodePlusOne = c.nodeStack[n-1] + 1
 	c.nodeStack = c.nodeStack[:n-1]
-}
-
-func (c *pointerCollector) pass() {
-	c.state.pass++
-}
-
-func (c *pointerCollector) popPass() {
-	c.state.pass--
 }
 
 func (c *pointerCollector) currentArea() int {
@@ -234,12 +224,12 @@ func (c *pointerCollector) addHitNode(n hitNode) {
 }
 
 // newHandler returns the current handler or a new one for tag.
-func (c *pointerCollector) newHandler(tag event.Tag, state *pointerHandler) {
+func (c *pointerCollector) newHandler(tag event.Tag, state *pointerHandler, terminate bool) {
 	areaID := c.currentArea()
 	c.addHitNode(hitNode{
-		area: areaID,
-		tag:  tag,
-		pass: c.state.pass > 0,
+		area:      areaID,
+		tag:       tag,
+		terminate: terminate,
 	})
 	state.areaPlusOne = areaID + 1
 }
@@ -280,11 +270,11 @@ func (q *pointerQueue) grab(state pointerState, req pointer.GrabCmd) (pointerSta
 	return state, evts
 }
 
-func (c *pointerCollector) inputOp(tag event.Tag, state *pointerHandler) {
+func (c *pointerCollector) inputOp(tag event.Tag, state *pointerHandler, terminate bool) {
 	areaID := c.currentArea()
 	area := &c.q.areas[areaID]
 	area.semantic.content.tag = tag
-	c.newHandler(tag, state)
+	c.newHandler(tag, state, terminate)
 }
 
 func (p *pointerFilter) Add(f event.Filter) {
@@ -548,24 +538,18 @@ func (q *pointerQueue) SemanticAt(pos f32.Point) (semID SemanticID, hasSemID boo
 // allows normal event routing and system action event routing to share the same traversal
 // logic even though they are interested in different aspects of hit nodes.
 func (q *pointerQueue) hitTest(pos f32.Point, onNode func(*hitNode) bool) pointer.Cursor {
-	// Track whether we're passing through hits.
-	pass := true
-	idx := len(q.hitTree) - 1
 	cursor := pointer.CursorDefault
-	for idx >= 0 {
+	for idx := len(q.hitTree) - 1; idx >= 0; idx-- {
 		n := &q.hitTree[idx]
 		hit, c := q.hit(n.area, pos)
 		if !hit {
-			idx--
 			continue
 		}
 		if cursor == pointer.CursorDefault {
 			cursor = c
 		}
-		pass = pass && n.pass
-		if pass {
-			idx--
-		} else {
+		if n.terminate {
+			// pass to layered component
 			idx = n.next
 		}
 		if !onNode(n) {

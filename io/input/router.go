@@ -780,6 +780,7 @@ func (q *Router) collect() {
 	kq := &q.key.queue
 	q.key.queue.Reset()
 	t := f32.AffineId()
+	terminate := false
 	for encOp, ok := q.reader.Decode(); ok; encOp, ok = q.reader.Decode() {
 		switch ops.OpType(encOp.Data[0]) {
 		case ops.TypeSave:
@@ -814,22 +815,20 @@ func (q *Router) collect() {
 			t = q.transStack[n-1]
 			q.transStack = q.transStack[:n-1]
 			pc.setTrans(t)
-
+		case ops.TypeStop:
+			terminate = true
+			fallthrough
 		case ops.TypeInput:
 			tag := encOp.Refs[0].(event.Tag)
 			s := q.stateFor(tag)
-			pc.inputOp(tag, &s.pointer)
+			pc.inputOp(tag, &s.pointer, terminate)
 			a := pc.currentArea()
 			b := pc.currentAreaBounds()
 			if s.filter.focusable {
 				kq.inputOp(tag, &s.key, t, a, b)
 			}
-
+			terminate = false
 		// Pointer ops.
-		case ops.TypePass:
-			pc.pass()
-		case ops.TypePopPass:
-			pc.popPass()
 		case ops.TypeCursor:
 			name := pointer.Cursor(encOp.Data[1])
 			pc.cursor(name)

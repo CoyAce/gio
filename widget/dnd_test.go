@@ -26,7 +26,6 @@ func TestDraggable(t *testing.T) {
 		Type: "file",
 	}
 	tgt := new(int)
-	defer pointer.PassOp{}.Push(gtx.Ops).Pop()
 	dims := drag.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Dimensions{Size: gtx.Constraints.Min}
 	}, nil)

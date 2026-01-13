@@ -419,7 +419,7 @@ func TestPointerEnterLeave(t *testing.T) {
 	f1 := addPointerHandler(&r, &ops, handler1, image.Rect(0, 0, 100, 100))
 
 	// Handler 2 area: (50, 50) - (200, 200) (areas overlap).
-	f2 := addPointerHandler(&r, &ops, handler2, image.Rect(50, 50, 200, 200))
+	f2 := addStopOpPointerHandler(&r, &ops, handler2, image.Rect(50, 50, 200, 200))
 
 	r.Frame(&ops)
 	// Hit both handlers.
@@ -797,7 +797,7 @@ func TestCursor(t *testing.T) {
 func TestPassOp(t *testing.T) {
 	var ops op.Ops
 
-	h1, h2, h3, h4 := new(int), new(int), new(int), new(int)
+	h1, h2, h3, h4 := "h1", "h2", "h3", "h4"
 	area := clip.Rect(image.Rect(0, 0, 100, 100))
 	root := area.Push(&ops)
 	event.Op(&ops, &h1)
@@ -806,10 +806,8 @@ func TestPassOp(t *testing.T) {
 	event.Op(&ops, h2)
 	child1.Pop()
 	child2 := area.Push(&ops)
-	pass := pointer.PassOp{}.Push(&ops)
 	event.Op(&ops, h3)
 	event.Op(&ops, h4)
-	pass.Pop()
 	child2.Pop()
 	root.Pop()
 
@@ -830,6 +828,44 @@ func TestPassOp(t *testing.T) {
 	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Press)
 	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Press)
 	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h4)), pointer.Press)
+}
+
+func TestStopOpLocalization(t *testing.T) {
+	var ops op.Ops
+
+	h1, h2, h3, h4 := "h1", "h2", "h3", "h4"
+	area := clip.Rect(image.Rect(0, 0, 100, 100))
+	component := area.Push(&ops)
+	event.Op(&ops, h1)
+	component1 := area.Push(&ops)
+	event.Op(&ops, h2)
+	component1.Pop()
+	component2 := area.Push(&ops)
+	component3 := area.Push(&ops)
+	event.Op(&ops, h3)
+	component3.Pop()
+	event.StopOp(&ops, h4)
+	component2.Pop()
+	component.Pop()
+
+	var r Router
+	filter := func(t event.Tag) event.Filter {
+		return pointer.Filter{Target: t, Kinds: pointer.Press | pointer.Cancel}
+	}
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)), pointer.Cancel)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h4)), pointer.Cancel)
+	r.Frame(&ops)
+	r.Queue(
+		pointer.Event{
+			Kind: pointer.Press,
+		},
+	)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h1)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h2)), pointer.Press)
+	assertEventPointerTypeSequence(t, events(&r, -1, filter(h3)))
 	assertEventPointerTypeSequence(t, events(&r, -1, filter(h4)), pointer.Press)
 }
 
@@ -1109,13 +1145,11 @@ func TestPassCursor(t *testing.T) {
 	pointer.CursorDefault.Add(&ops)
 	background.Pop()
 
-	overlayPass := pointer.PassOp{}.Push(&ops)
 	overlay := rect.Push(&ops)
 	event.Op(&ops, 2)
 	want := pointer.CursorPointer
 	want.Add(&ops)
 	overlay.Pop()
-	overlayPass.Pop()
 	r.Frame(&ops)
 	r.Queue(pointer.Event{
 		Position: f32.Pt(10, 10),
@@ -1136,11 +1170,9 @@ func TestPartialEvent(t *testing.T) {
 	event.Op(&ops, 1)
 	background.Pop()
 
-	overlayPass := pointer.PassOp{}.Push(&ops)
 	overlay := rect.Push(&ops)
 	event.Op(&ops, 2)
 	overlay.Pop()
-	overlayPass.Pop()
 	assertEventSequence(t, events(&r, -1, pointer.Filter{Target: 1, Kinds: pointer.Press}))
 	assertEventSequence(t, events(&r, -1, pointer.Filter{Target: 2, Kinds: pointer.Press}))
 	r.Frame(&ops)
@@ -1176,6 +1208,19 @@ func addPointerHandler(r *Router, ops *op.Ops, tag event.Tag, area image.Rectang
 	events(r, -1, f)
 	defer clip.Rect(area).Push(ops).Pop()
 	event.Op(ops, tag)
+	return f
+}
+
+// addStopOpPointerHandler adds an event.StopOp for the tag in a
+// rectangular area.
+func addStopOpPointerHandler(r *Router, ops *op.Ops, tag event.Tag, area image.Rectangle) pointer.Filter {
+	f := pointer.Filter{
+		Target: tag,
+		Kinds:  pointer.Press | pointer.Release | pointer.Move | pointer.Drag | pointer.Enter | pointer.Leave | pointer.Cancel,
+	}
+	events(r, -1, f)
+	defer clip.Rect(area).Push(ops).Pop()
+	event.StopOp(ops, tag)
 	return f
 }
 
