@@ -173,14 +173,17 @@ func (e *textView) closestToLineCol(line, col int) combinedPos {
 	return e.index.closestToLineCol(screenPos{line: line, col: col})
 }
 
-func (e *textView) closestToXY(x fixed.Int26_6, y int) combinedPos {
+func (e *textView) closestToXY(x fixed.Int26_6, y int) (combinedPos, bool) {
 	e.makeValid()
 	return e.index.closestToXY(x, y)
 }
 
-func (e *textView) closestToXYGraphemes(x fixed.Int26_6, y int) combinedPos {
+func (e *textView) closestToXYGraphemes(x fixed.Int26_6, y int) (combinedPos, bool) {
 	// Find the closest existing rune position to the provided coordinates.
-	pos := e.closestToXY(x, y)
+	pos, atEndOfLine := e.closestToXY(x, y)
+	if atEndOfLine {
+		return pos, true
+	}
 	// Resolve cluster boundaries on either side of the rune position.
 	firstOption := e.moveByGraphemes(pos.runes, 0)
 	distance := 1
@@ -194,9 +197,9 @@ func (e *textView) closestToXYGraphemes(x fixed.Int26_6, y int) combinedPos {
 	second := e.closestToRune(secondOption)
 	secondDist := absFixed(second.x - x)
 	if firstDist > secondDist {
-		return second
+		return second, false
 	} else {
-		return first
+		return first, false
 	}
 }
 
@@ -214,8 +217,11 @@ func (e *textView) MoveLines(distance int, selAct selectionAction) {
 	x := caretStart.x + e.caret.xoff
 	// Seek to line.
 	pos := e.closestToLineCol(caretStart.lineCol.line+distance, 0)
-	pos = e.closestToXYGraphemes(x, pos.y)
+	pos, atEndOfLine := e.closestToXYGraphemes(x, pos.y)
 	e.caret.start = pos.runes
+	if atEndOfLine && pos.runes > 0 {
+		e.caret.start = pos.runes - 1
+	}
 	e.caret.xoff = x - pos.x
 	e.updateSelection(selAct)
 }
@@ -472,7 +478,8 @@ func (e *textView) scrollAbs(x, y int) {
 func (e *textView) MoveCoord(pos image.Point) {
 	x := fixed.I(pos.X + e.scrollOff.X)
 	y := pos.Y + e.scrollOff.Y
-	e.caret.start = e.closestToXYGraphemes(x, y).runes
+	p, _ := e.closestToXYGraphemes(x, y)
+	e.caret.start = p.runes
 	e.caret.xoff = 0
 }
 
@@ -610,7 +617,7 @@ func (e *textView) MovePages(pages int, selAct selectionAction) {
 	caret := e.closestToRune(e.caret.start)
 	x := caret.x + e.caret.xoff
 	y := caret.y + pages*e.viewSize.Y
-	pos := e.closestToXYGraphemes(x, y)
+	pos, _ := e.closestToXYGraphemes(x, y)
 	e.caret.start = pos.runes
 	e.caret.xoff = x - pos.x
 	e.updateSelection(selAct)
