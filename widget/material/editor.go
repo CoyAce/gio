@@ -64,15 +64,15 @@ func (e EditorStyle) Layout(gtx layout.Context) layout.Dimensions {
 	paint.ColorOp{Color: blendDisabledColor(!gtx.Enabled(), e.SelectionColor)}.Add(gtx.Ops)
 	selectionColor := selectionColorMacro.Stop()
 
-	var maxlines int
+	var maxLines int
 	if e.Editor.SingleLine {
-		maxlines = 1
+		maxLines = 1
 	}
 
 	macro := op.Record(gtx.Ops)
 	tl := widget.Label{
 		Alignment:       e.Editor.Alignment,
-		MaxLines:        maxlines,
+		MaxLines:        maxLines,
 		LineHeight:      e.LineHeight,
 		LineHeightScale: e.LineHeightScale,
 	}
