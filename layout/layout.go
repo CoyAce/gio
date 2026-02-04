@@ -4,9 +4,12 @@ package layout
 
 import (
 	"image"
+	"image/color"
 
 	"gioui.org/f32"
 	"gioui.org/op"
+	"gioui.org/op/clip"
+	"gioui.org/op/paint"
 	"gioui.org/unit"
 )
 
@@ -130,6 +133,26 @@ func (c Constraints) SubMax(delta image.Point) Constraints {
 	}
 	c.Min = c.Constrain(c.Min)
 	return c
+}
+
+// Hr draw a horizontal rule with Height and Color
+type Hr struct {
+	Height unit.Dp
+	Color  color.NRGBA
+}
+
+func (hr Hr) Layout(gtx Context) Dimensions {
+	size := image.Point{Y: gtx.Dp(hr.Height), X: gtx.Constraints.Max.X}
+	paint.FillShape(
+		gtx.Ops,
+		hr.Color,
+		clip.UniformRRect(
+			image.Rectangle{
+				Max: size,
+			},
+			0,
+		).Op(gtx.Ops))
+	return Dimensions{Size: size}
 }
 
 // Inset adds space around a widget by decreasing its maximum
