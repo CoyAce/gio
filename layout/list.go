@@ -23,9 +23,8 @@ type scrollChild struct {
 type List struct {
 	Axis Axis
 	// ScrollToEnd instructs the list to stay scrolled to the far end position
-	// once reached. A List with ScrollToEnd == true and Position.BeforeEnd ==
-	// false draws its content with the last item at the bottom of the list
-	// area.
+	// once reached. A List with ScrollToEnd == true draws its content with
+	// the last item at the bottom of the list area.
 	ScrollToEnd bool
 	// Alignment is the cross axis alignment of list elements.
 	Alignment Alignment
@@ -65,9 +64,8 @@ type Position struct {
 	// use "before end" instead of "at end" so that the zero value of a
 	// Position struct is useful.
 	//
-	// When laying out a list, if ScrollToEnd is true and BeforeEnd is false,
-	// then First and Offset are ignored, and the list is drawn with the last
-	// item at the bottom. If ScrollToEnd is false then BeforeEnd is ignored.
+	// When laying out a list, if ScrollToEnd is true, then First and Offset
+	// are ignored, and the list is drawn with the last item at the bottom.
 	BeforeEnd bool
 	// First is the index of the first visible child.
 	First int
@@ -101,13 +99,17 @@ func (l *List) init(gtx Context, len int) {
 	l.children = l.children[:0]
 	l.len = len
 	l.update(gtx)
+	l.checkAndResetPosition()
+}
+
+func (l *List) checkAndResetPosition() {
 	if l.Position.First < 0 {
 		l.Position.Offset = 0
 		l.Position.First = 0
 	}
-	if l.scrollToEnd() || l.Position.First > len {
+	if l.scrollToEnd() || l.Position.First > l.len {
 		l.Position.Offset = 0
-		l.Position.First = len
+		l.Position.First = l.len
 	}
 }
 
@@ -132,7 +134,7 @@ func (l *List) Layout(gtx Context, len int, w ListElement) Dimensions {
 	}
 
 	if numLaidOut > 0 {
-		l.Position.Length = laidOutTotalLength*len/numLaidOut + l.Gap*(len-1)
+		l.Position.Length = laidOutTotalLength * len / numLaidOut + l.Gap*(len-1)
 	} else {
 		l.Position.Length = 0
 	}
@@ -140,7 +142,7 @@ func (l *List) Layout(gtx Context, len int, w ListElement) Dimensions {
 }
 
 func (l *List) scrollToEnd() bool {
-	return l.ScrollToEnd && !l.Position.BeforeEnd
+	return l.ScrollToEnd
 }
 
 // Dragging reports whether the List is being dragged.
@@ -210,37 +212,71 @@ func (l *List) more() bool {
 }
 
 func (l *List) nextDir() iterationDir {
-	_, vsize := l.Axis.mainConstraint(l.cs)
-	last := l.Position.First + len(l.children)
-	// Clamp offset.
-	if l.maxSize-l.Position.Offset < vsize && last == l.len {
-		l.Position.Offset = l.maxSize - vsize
-	}
-	if l.Position.Offset < 0 && l.Position.First == 0 {
-		l.Position.Offset = 0
-	}
-	// Lay out an extra (invisible) child at each end to enable focus to
-	// move to them, triggering automatic scroll.
-	firstSize, lastSize := 0, 0
-	if len(l.children) > 0 {
-		if l.Position.First > 0 {
-			firstChild := l.children[0]
-			firstSize = l.Axis.Convert(firstChild.size).X + l.Gap
-		}
-		if last < l.len {
-			lastChild := l.children[len(l.children)-1]
-			lastSize = l.Axis.Convert(lastChild.size).X + l.Gap
-		}
-	}
+	//-----------------------------position.offset
+	// l.maxSize = s1 + s2        |		  |
+	//--------top edge, offset: 0 |       |
+	// backward space             | forward space
+	//--------position.offset     |       |
+	// forward space              |       |
+	//--------leading edge of children, offset: - viewSize + l.maxSize
+	// child1  size: s1
+	//--------offset: - viewSize + s2
+	// child2  size: s2
+	//--------bottom edge, offset: - viewSize
+	l.tryAlignToBottomEdge()
+	l.tryAlignToTopEdge()
 	switch {
 	case len(l.children) == l.len:
 		return iterateNone
-	case l.maxSize-l.Position.Offset-lastSize < vsize:
+	case l.forwardSpaceAvailable():
 		return iterateForward
-	case l.Position.Offset-firstSize < 0:
+	case l.backwardSpaceAvailable():
 		return iterateBackward
 	}
 	return iterateNone
+}
+
+func (l *List) tryAlignToTopEdge() {
+	if l.firstElemVisible() && l.backwardSpaceAvailable() {
+		l.clearBackwardSpace()
+	}
+}
+
+func (l *List) tryAlignToBottomEdge() {
+	if l.lastElemVisible() && l.forwardSpaceAvailable() {
+		l.clearForwardSpace()
+	}
+}
+
+func (l *List) firstElemVisible() bool {
+	return l.Position.First == 0
+}
+
+func (l *List) lastElemVisible() bool {
+	last := l.Position.First + len(l.children)
+	lastVisible := last == l.len
+	return lastVisible
+}
+
+func (l *List) backwardSpaceAvailable() bool {
+	return -l.Position.Offset > 0
+}
+
+func (l *List) forwardSpaceAvailable() bool {
+	return l.Position.Offset-l.leadingEdgeOfChildren() > 0
+}
+
+func (l *List) clearBackwardSpace() {
+	l.Position.Offset = 0
+}
+
+func (l *List) clearForwardSpace() {
+	l.Position.Offset = l.leadingEdgeOfChildren()
+}
+
+func (l *List) leadingEdgeOfChildren() int {
+	_, viewSize := l.Axis.mainConstraint(l.cs)
+	return l.maxSize - viewSize
 }
 
 // End the current child by specifying its dimensions.
@@ -255,9 +291,7 @@ func (l *List) end(dims Dimensions, call op.CallOp) {
 	case iterateForward:
 		l.children = append(l.children, child)
 	case iterateBackward:
-		l.children = append(l.children, scrollChild{})
-		copy(l.children[1:], l.children)
-		l.children[0] = child
+		l.children = append([]scrollChild{child}, l.children...)
 		l.Position.First--
 		l.Position.Offset += mainSize + l.Gap
 	default:
@@ -272,9 +306,81 @@ func (l *List) layout(ops *op.Ops, macro op.MacroOp) Dimensions {
 		panic("unfinished child")
 	}
 	mainMin, mainMax := l.Axis.mainConstraint(l.cs)
+	children := l.skipInvisibleChildren()
+	mainAxisOffset := -l.Position.Offset
+	var maxCross int
+	for i, child := range children {
+		sz := l.Axis.Convert(child.size)
+		if c := sz.Y; c > maxCross {
+			maxCross = c
+		}
+		if i > 0{
+			mainAxisOffset += l.Gap
+		}
+		mainAxisOffset += sz.X
+	}
+	l.Position.Count = len(children)
+	l.Position.OffsetLast = mainMax - mainAxisOffset
+	// ScrollToEnd lists are end aligned.
+	if space := l.Position.OffsetLast; l.ScrollToEnd && space > 0 {
+		l.Position.Offset -= space
+	}
+
+	layout := func(child scrollChild, main int) int {
+		sz := l.Axis.Convert(child.size)
+		var cross int
+		switch l.Alignment {
+		case End:
+			cross = maxCross - sz.Y
+		case Middle:
+			cross = (maxCross - sz.Y) / 2
+		}
+		pt := l.Axis.Convert(image.Pt(main, cross))
+		transition := op.Offset(pt).Push(ops)
+		child.call.Add(ops)
+		transition.Pop()
+		return sz.X
+	}
+
+	mainAxisOffset = -l.Position.Offset
+	for i, child := range children {
+		if i > 0{
+			mainAxisOffset += l.Gap
+		}
+		childSize := layout(child, mainAxisOffset)
+		mainAxisOffset += childSize
+	}
+
+	atStart := l.Position.First == 0 && l.Position.Offset <= 0
+	atEnd := l.Position.First+len(children) == l.len && mainMax >= mainAxisOffset
+	if atStart && l.scrollDelta < 0 || atEnd && l.scrollDelta > 0 {
+		l.scroll.Stop()
+	}
+	l.Position.BeforeEnd = !atEnd
+
+	if mainAxisOffset < mainMin {
+		mainAxisOffset = mainMin
+	}
+	if mainAxisOffset > mainMax {
+		mainAxisOffset = mainMax
+	}
+	if crossMin, crossMax := l.Axis.crossConstraint(l.cs); maxCross < crossMin {
+		maxCross = crossMin
+	} else if maxCross > crossMax {
+		maxCross = crossMax
+	}
+	dims := l.Axis.Convert(image.Pt(mainAxisOffset, maxCross))
+	call := macro.Stop()
+
+	defer clip.Rect(image.Rectangle{Max: dims}).Push(ops).Pop()
+	l.scroll.Add(ops)
+
+	call.Add(ops)
+	return Dimensions{Size: dims}
+}
+
+func (l *List) skipInvisibleChildren() []scrollChild {
 	children := l.children
-	var first scrollChild
-	// Skip invisible children.
 	for len(children) > 0 {
 		child := children[0]
 		sz := child.size
@@ -285,95 +391,9 @@ func (l *List) layout(ops *op.Ops, macro op.MacroOp) Dimensions {
 		}
 		l.Position.First++
 		l.Position.Offset -= mainSize + l.Gap
-		first = child
 		children = children[1:]
 	}
-	size := -l.Position.Offset
-	var maxCross int
-	var last scrollChild
-	for i, child := range children {
-		sz := l.Axis.Convert(child.size)
-		if c := sz.Y; c > maxCross {
-			maxCross = c
-		}
-		if i > 0 {
-			size += l.Gap
-		}
-		size += sz.X
-		if size >= mainMax {
-			if i < len(children)-1 {
-				last = children[i+1]
-			}
-			children = children[:i+1]
-			break
-		}
-	}
-	l.Position.Count = len(children)
-	l.Position.OffsetLast = mainMax - size
-	// ScrollToEnd lists are end aligned.
-	if space := l.Position.OffsetLast; l.ScrollToEnd && space > 0 {
-		l.Position.Offset -= space
-	}
-	pos := -l.Position.Offset
-	layout := func(child scrollChild) {
-		sz := l.Axis.Convert(child.size)
-		var cross int
-		switch l.Alignment {
-		case End:
-			cross = maxCross - sz.Y
-		case Middle:
-			cross = (maxCross - sz.Y) / 2
-		}
-		childSize := sz.X
-		pt := l.Axis.Convert(image.Pt(pos, cross))
-		trans := op.Offset(pt).Push(ops)
-		child.call.Add(ops)
-		trans.Pop()
-		pos += childSize
-	}
-	// Lay out leading invisible child.
-	if first != (scrollChild{}) {
-		sz := l.Axis.Convert(first.size)
-		pos -= sz.X + l.Gap
-		layout(first)
-		pos += l.Gap
-	}
-	for i, child := range children {
-		if i > 0 {
-			pos += l.Gap
-		}
-		layout(child)
-	}
-	// Lay out trailing invisible child.
-	if last != (scrollChild{}) {
-		pos += l.Gap
-		layout(last)
-	}
-	atStart := l.Position.First == 0 && l.Position.Offset <= 0
-	atEnd := l.Position.First+len(children) == l.len && mainMax >= pos
-	if atStart && l.scrollDelta < 0 || atEnd && l.scrollDelta > 0 {
-		l.scroll.Stop()
-	}
-	l.Position.BeforeEnd = !atEnd
-	if pos < mainMin {
-		pos = mainMin
-	}
-	if pos > mainMax {
-		pos = mainMax
-	}
-	if crossMin, crossMax := l.Axis.crossConstraint(l.cs); maxCross < crossMin {
-		maxCross = crossMin
-	} else if maxCross > crossMax {
-		maxCross = crossMax
-	}
-	dims := l.Axis.Convert(image.Pt(pos, maxCross))
-	call := macro.Stop()
-	defer clip.Rect(image.Rectangle{Max: dims}).Push(ops).Pop()
-
-	l.scroll.Add(ops)
-
-	call.Add(ops)
-	return Dimensions{Size: dims}
+	return children
 }
 
 // ScrollBy scrolls the list by a relative amount of items.
