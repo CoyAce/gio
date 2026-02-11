@@ -10,8 +10,9 @@
 
 __attribute__ ((visibility ("hidden"))) Class gio_layerClass(void);
 
-@interface GioView: UIView <UIKeyInput>
+@interface GioView: UIView <UIKeyInput,UITextViewDelegate>
 @property uintptr_t handle;
+@property (nonatomic, strong) UITextView *textView;
 @end
 
 @implementation GioViewController
@@ -125,14 +126,114 @@ static void handleTouches(int last, GioView *view, NSSet<UITouch *> *touches, UI
 	}
 }
 
-@implementation GioView
-NSArray<UIKeyCommand *> *_keyCommands;
+@implementation GioView {
+    NSArray<UIKeyCommand *> *_keyCommands;
+    NSString *_lastConfirmedText;
+}
 + (void)onFrameCallback:(CADisplayLink *)link {
        gio_onFrameCallback((__bridge CFTypeRef)link);
 }
 + (Class)layerClass {
     return gio_layerClass();
 }
+
+- (BOOL)becomeFirstResponder {
+    return [self.textView becomeFirstResponder];
+}
+
+- (BOOL)resignFirstResponder {
+    return [self.textView resignFirstResponder];
+}
+
+#pragma mark - UITextViewDelegate
+
+/**
+ * Listen for text changes - Handle all insertion operations
+ *
+ * Note: This method is called only AFTER the text has "actually changed",
+ * the markedTextRange state is completely accurate at this point
+ * Pinyin input (markedTextRange != nil): return directly, no insertion handling
+ */
+- (void)textViewDidChange:(UITextView *)textView {
+    // Pinyin composing in progress: text not confirmed
+    if (textView.markedTextRange != nil) {
+        return;
+    }
+
+    NSString *currentText = textView.text;
+    NSString *oldText = _lastConfirmedText ?: @"";
+
+    if (currentText.length > oldText.length) {
+        NSString *inserted = [currentText substringFromIndex:oldText.length];
+        onText(self.handle, (__bridge CFTypeRef)inserted);
+    }
+
+    // Update cache, prepare for next change
+    _lastConfirmedText = currentText;
+}
+
+/**
+ * Intercept upcoming text changes - Handle all deletion operations and the deletion part of replacement operations.
+ *
+ * Note: The markedTextRange state is unreliable when this method is called, cannot be used to determine Pinyin input.
+ * Deletion operation: Report immediately, let the system perform the actual deletion.
+ * Replacement operation: Report deletion first, then report insertion (insertion is handled in textViewDidChange)
+ */
+- (BOOL)textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text {
+    // Pinyin input in progress
+    if (textView.markedTextRange != nil) {
+        return YES;
+    }
+
+    // ------------------- Scenario 1: Pure deletion operation -------------------
+    // Characteristic: replacementText is empty string
+    // Trigger: Press backspace key, select text and press backspace key
+    if (text.length == 0) {
+        onDeleteBackward(self.handle);
+        return YES;  // Let the system perform the actual deletion
+    }
+
+    // ------------------- Scenario 2: Replacement operation -------------------
+    // Characteristic: Has deletion (range.length > 0) and has insertion (text.length > 0)
+    // Trigger: Select text and directly input new characters, Chinese input method candidate word replacement
+    if (text.length > 0 && range.length > 0) {
+        // First report the deleted characters
+        for (NSUInteger i = 0; i < range.length; i++) {
+            onDeleteBackward(self.handle);
+        }
+        // Update cache: Simulate text state after deletion
+        _lastConfirmedText = [textView.text stringByReplacingCharactersInRange:range withString:@""];
+        // Note: Insertion operation is handled uniformly in textViewDidChange
+        // onText is not called here to avoid duplicate reporting
+        return YES;  // Let the system perform deletion + insertion
+    }
+
+    // ------------------- Scenario 3: Pure insertion operation -------------------
+    // Characteristic: No deletion (range.length == 0) and has insertion (text.length > 0)
+    // Trigger: Normal character input, paste
+    // Insertion operations are handled uniformly in textViewDidChange, only return YES here to let the system execute
+    return YES;
+}
+
+- (void)textViewDidEndEditing:(UITextView *)textView {
+    self.textView.text = @"";
+    _lastConfirmedText = @"";
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        _textView = [[UITextView alloc] initWithFrame:CGRectMake(0, 0, 0, 0)];
+        _textView.delegate = self;
+        _textView.selectable = NO;
+        _textView.editable = YES;
+        _textView.userInteractionEnabled = NO;
+        _textView.hidden = YES;
+        [self addSubview:_textView];
+    }
+    return self;
+}
+
 - (void)willMoveToWindow:(UIWindow *)newWindow {
 	if (self.window != nil) {
 		[[NSNotificationCenter defaultCenter] removeObserver:self
@@ -182,11 +283,10 @@ NSArray<UIKeyCommand *> *_keyCommands;
 }
 
 - (void)insertText:(NSString *)text {
-	onText(self.handle, (__bridge CFTypeRef)text);
 }
 
 - (BOOL)canBecomeFirstResponder {
-	return YES;
+    return YES;
 }
 
 - (BOOL)hasText {
@@ -194,7 +294,6 @@ NSArray<UIKeyCommand *> *_keyCommands;
 }
 
 - (void)deleteBackward {
-	onDeleteBackward(self.handle);
 }
 
 - (void)onUpArrow {
