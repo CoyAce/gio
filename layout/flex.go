@@ -22,6 +22,8 @@ type Flex struct {
 	// size of Flexed children. If WeightSum is zero, the sum
 	// of all Flexed weights is used.
 	WeightSum float32
+	// Gap is the space in pixels between children.
+	Gap int
 }
 
 // FlexChild is the descriptor for a Flex child.
@@ -82,6 +84,14 @@ func (f Flex) Layout(gtx Context, children ...FlexChild) Dimensions {
 	mainMin, mainMax := f.Axis.mainConstraint(cs)
 	crossMin, crossMax := f.Axis.crossConstraint(cs)
 	remaining := mainMax
+	// Reserve space for gaps between children.
+	if len(children) > 1 && f.Gap > 0 {
+		totalGap := f.Gap * (len(children) - 1)
+		remaining -= totalGap
+		if remaining < 0 {
+			remaining = 0
+		}
+	}
 	var totalWeight float32
 	cgtx := gtx
 	// Note: previously the scratch space was inside FlexChild.
@@ -162,6 +172,9 @@ func (f Flex) Layout(gtx Context, children ...FlexChild) Dimensions {
 			maxBaseline = b
 		}
 	}
+	if len(children) > 1 && f.Gap > 0 {
+		size += f.Gap * (len(children) - 1)
+	}
 	var space int
 	if mainMin > size {
 		space = mainMin - size
@@ -199,6 +212,7 @@ func (f Flex) Layout(gtx Context, children ...FlexChild) Dimensions {
 		trans.Pop()
 		mainSize += f.Axis.Convert(dims.Size).X
 		if i < len(children)-1 {
+			mainSize += f.Gap
 			switch f.Spacing {
 			case SpaceEvenly:
 				mainSize += space / (1 + len(children))
