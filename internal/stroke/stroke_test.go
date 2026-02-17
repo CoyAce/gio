@@ -152,7 +152,6 @@ func BenchmarkSplitCubic(b *testing.B) {
 	}
 
 	for _, s := range scenarios {
-		s := s
 		b.Run(strconv.Itoa(s.segments), func(b *testing.B) {
 			from, ctrl0, ctrl1, to := s.from, s.ctrl0, s.ctrl1, s.to
 			quads := make([]QuadSegment, s.segments)

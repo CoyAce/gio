@@ -362,10 +362,7 @@ func (e *textView) PaintText(gtx layout.Context, material op.CallOp) {
 // caretWidth returns the width occupied by the caret for the current
 // gtx.
 func (e *textView) caretWidth(gtx layout.Context) int {
-	carWidth2 := gtx.Dp(1) / 2
-	if carWidth2 < 1 {
-		carWidth2 = 1
-	}
+	carWidth2 := max(gtx.Dp(1)/2, 1)
 	return carWidth2
 }
 
@@ -434,10 +431,7 @@ func (e *textView) ScrollBounds() image.Rectangle {
 	if e.SingleLine {
 		if len(e.index.lines) > 0 {
 			line := e.index.lines[0]
-			b.Min.X = line.xOff.Floor()
-			if b.Min.X > 0 {
-				b.Min.X = 0
-			}
+			b.Min.X = min(line.xOff.Floor(), 0)
 		}
 		b.Max.X = e.dims.Size.X + b.Min.X - e.viewSize.X
 	} else {

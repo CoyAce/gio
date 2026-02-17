@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Unlicense OR MIT
 
 //go:build go1.18
-// +build go1.18
 
 package app
 
