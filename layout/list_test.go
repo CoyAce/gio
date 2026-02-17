@@ -184,6 +184,93 @@ func TestListPosition(t *testing.T) {
 	}
 }
 
+func TestListGap(t *testing.T) {
+	gtx := Context{
+		Ops: new(op.Ops),
+		Constraints: Constraints{
+			Max: image.Pt(100, 20),
+		},
+	}
+
+	// Two 10px children with 5px gap: total 25px.
+	l := List{Gap: 5}
+	dims := l.Layout(gtx, 2, func(gtx Context, idx int) Dimensions {
+		return Dimensions{Size: image.Pt(10, 10)}
+	})
+	if got, exp := dims.Size.X, 25; got != exp {
+		t.Errorf("two children with gap: got width %d, expected %d", got, exp)
+	}
+
+	// Three 10px children with 5px gap: total 40px.
+	l = List{Gap: 5}
+	dims = l.Layout(gtx, 3, func(gtx Context, idx int) Dimensions {
+		return Dimensions{Size: image.Pt(10, 10)}
+	})
+	if got, exp := dims.Size.X, 40; got != exp {
+		t.Errorf("three children with gap: got width %d, expected %d", got, exp)
+	}
+
+	// Single child: no gap.
+	l = List{Gap: 5}
+	dims = l.Layout(gtx, 1, func(gtx Context, idx int) Dimensions {
+		return Dimensions{Size: image.Pt(10, 10)}
+	})
+	if got, exp := dims.Size.X, 10; got != exp {
+		t.Errorf("single child with gap: got width %d, expected %d", got, exp)
+	}
+
+	// Zero children: no gap.
+	l = List{Gap: 5}
+	dims = l.Layout(gtx, 0, nil)
+	if got, exp := dims.Size.X, 0; got != exp {
+		t.Errorf("no children with gap: got width %d, expected %d", got, exp)
+	}
+}
+
+func TestListGapVertical(t *testing.T) {
+	gtx := Context{
+		Ops: new(op.Ops),
+		Constraints: Constraints{
+			Max: image.Pt(20, 100),
+		},
+	}
+
+	l := List{Axis: Vertical, Gap: 10}
+	dims := l.Layout(gtx, 3, func(gtx Context, idx int) Dimensions {
+		return Dimensions{Size: image.Pt(10, 15)}
+	})
+	// 3*15 + 2*10 = 65.
+	if got, exp := dims.Size.Y, 65; got != exp {
+		t.Errorf("vertical list with gap: got height %d, expected %d", got, exp)
+	}
+}
+
+func TestListGapPosition(t *testing.T) {
+	gtx := Context{
+		Ops: new(op.Ops),
+		Constraints: Constraints{
+			Max: image.Pt(30, 20),
+		},
+	}
+
+	// Viewport 30px, 5 children of 10px with 5px gap.
+	// Children fill: 10, 10+5+10=25, 25+5+10=40 >= 30, so 3 visible (last partially).
+	l := List{Gap: 5}
+	l.Layout(gtx, 5, func(gtx Context, idx int) Dimensions {
+		return Dimensions{Size: image.Pt(10, 10)}
+	})
+	if got, exp := l.Position.Count, 3; got != exp {
+		t.Errorf("visible count with gap: got %d, expected %d", got, exp)
+	}
+	if got, exp := l.Position.First, 0; got != exp {
+		t.Errorf("first with gap: got %d, expected %d", got, exp)
+	}
+	// OffsetLast = mainMax - size = 30 - 40 = -10.
+	if got, exp := l.Position.OffsetLast, -10; got != exp {
+		t.Errorf("offset last with gap: got %d, expected %d", got, exp)
+	}
+}
+
 func TestExtraChildren(t *testing.T) {
 	var l List
 	l.Position.First = 1
