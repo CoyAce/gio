@@ -53,9 +53,15 @@ func (b *Clickable) Clicked(gtx layout.Context) bool {
 	return b.clicked(b, gtx)
 }
 
-func (b *Clickable) clicked(t event.Tag, gtx layout.Context) bool {
-	_, clicked := b.update(t, gtx)
-	return clicked
+func (b *Clickable) clicked(t event.Tag, gtx layout.Context) (clicked bool) {
+	for {
+		_, ok := b.update(t, gtx)
+		if !ok {
+			break
+		}
+		clicked = true
+	}
+	return
 }
 
 // Hovered reports whether a pointer is over the element.

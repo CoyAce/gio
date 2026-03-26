@@ -6,8 +6,10 @@ import (
 	"image"
 	"testing"
 
+	"gioui.org/f32"
 	"gioui.org/io/input"
 	"gioui.org/io/key"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/widget"
@@ -90,5 +92,51 @@ func TestClickable(t *testing.T) {
 	}
 	if b2.Clicked(gtx) {
 		t.Error("button 2 should not have been clicked, as it only got return release")
+	}
+}
+
+func TestHovered(t *testing.T) {
+	var (
+		r input.Router
+		b widget.Clickable
+	)
+	gtx := layout.Context{
+		Ops:    new(op.Ops),
+		Source: r.Source(),
+	}
+	layout := func() {
+		if b.Clicked(gtx) {
+			return
+		}
+		b.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Dimensions{Size: image.Pt(100, 100)}
+		})
+	}
+	frame := func() {
+		gtx.Reset()
+		layout()
+		r.Frame(gtx.Ops)
+	}
+	frame()
+	r.Queue(
+		pointer.Event{
+			Kind:     pointer.Press,
+			Source:   pointer.Touch,
+			Position: f32.Pt(50, 50),
+		},
+		pointer.Event{
+			Kind:     pointer.Press,
+			Source:   pointer.Touch,
+			Position: f32.Pt(50, 50),
+		},
+		pointer.Event{
+			Kind:     pointer.Release,
+			Source:   pointer.Touch,
+			Position: f32.Pt(50, 50),
+		},
+	)
+	frame()
+	if b.Hovered() {
+		t.Error("button should not get hovered")
 	}
 }
